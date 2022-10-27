@@ -1,0 +1,188 @@
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+getwd()
+## R Markdown
+
+```{r Load Packages}
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, shiny, ggplot2, imputeMissings, mice, leaflet, htmltools,esquisse)
+search()
+
+```
+
+```{r houses}
+house_df <- read.csv("Housing_2021.csv",header= TRUE)
+house_filtered_ptypes = filter(house_df,house_df$PROPERTY.TYPE == "Single Family Residential" | house_df$PROPERTY.TYPE == "Townhouse")
+```
+## Data Preprocessing
+```{r}
+
+# number of missing values
+colSums(is.na(house_filtered_ptypes))
+summary(house_filtered_ptypes)
+
+# Imputing missing data
+tempData <- mice(house_filtered_ptypes,m=1,maxit=0,method='pmm',seed=42)
+completedData <- complete(tempData,1)
+
+
+## Adding label columns used in future
+completedData$label = paste( "<p>", "PropertyType:"
+                 , completedData$PROPERTY.TYPE, ", ","</p>",
+                 "<p>","Address:", completedData$ADDRESS, ", ", "</p>",
+                  "<p>", "City:", completedData$CITY, ", " , "</p>",
+                  "<p>", "Zipcode:", completedData$ZIP.OR.POSTAL.CODE, ", " , "</p>",
+                  "<p>", "Price:", completedData$PRICE, ", ","</p>",
+                  "<p>", "Beds:", completedData$BEDS, ", ", "</p>",
+                  "<p>","Baths:", completedData$BATHS, ", ", "</p>",
+                  "<p>","SquareFeet:", completedData$SQUARE.FEET, ", ","</p>",
+                  "<p>", "YearBuilt:", completedData$YEAR.BUILT , "</p>")
+
+```
+```{r}
+# analysing the DataSet
+# Price Distribution
+completedData %>%
+ggplot() +
+ aes(x = PRICE) +
+ geom_histogram(bins = 30L, fill = "#0c4c8a") +
+ theme_minimal()
+boxplot(completedData$PRICE, data = completedData)
+## price has a number of outliers. So capping the price value at median value.
+
+#interquatile range for price
+Iqr <-IQR(completedData$PRICE)
+
+# LowerInner Fence
+LowerInnerFence <- 418990 - 1.5 * Iqr
+# UpperInner Fence
+UpperInnerFence <- 1349000 + 1.5 * Iqr
+
+# updating outliers with median value
+completedData$PRICE[completedData$PRICE>=UpperInnerFence] =  median(completedData$PRICE)
+
+```
+
+
+
+## creating table for question 2
+```{r}
+grouped_housing_data = group_by(completedData , ZIP.OR.POSTAL.CODE, PROPERTY.TYPE)
+median_houseprice  = summarize(grouped_housing_data, median_price = median(PRICE))
+
+pivoted_median = median_houseprice %>% pivot_wider(
+  names_from = PROPERTY.TYPE,
+  values_from = median_price
+)
+# sorting by Single Family residential
+pivoted_median = pivoted_median[order(-pivoted_median["Single Family Residential"]),]
+```
+# Creating Shiny app with Tabs
+```{r}
+
+ui <-  fluidPage( 
+  h1("Dallas Housing Data"),
+
+  #TAB 1 
+  tabsetPanel(
+ tabPanel("Price Distribution based on the zipcode",
+  sidebarLayout(
+
+    # Sidebar panel for Inputs ----
+    sidebarPanel(
+                selectInput(inputId = "zip",
+                  label = "zip_codes",choices =   completedData$ZIP.OR.POSTAL.CODE,
+                 multiple = TRUE , selected = 75252 )),
+ mainPanel(
+ plotOutput(outputId = "hist")
+ )
+)),
+## Tab 2 
+tabPanel("Median House price based on Property type and Zip code" ,
+h1("Summary Plot Showing median prices of Houses"),
+      mainPanel(dataTableOutput(outputId = "summary"))),
+# Tab 3
+tabPanel("BoxPlot Distribution of Prices using different combinations" ,
+         sidebarLayout(
+
+    # Sidebar panel for Inputs ----
+    sidebarPanel(
+                sliderInput(inputId = "BEDS",
+                  label = "Select number of beds required",min = min(completedData$BEDS),max = max(completedData$BEDS),
+                 value = 1 ),
+    
+                sliderInput(inputId = "BATHS",
+                  label = "Select Number of baths  required",min = min(completedData$BATHS),max = max(completedData$BATHS),
+                 value = min(completedData$BATHS) ),
+               sliderInput(inputId = "sq",
+                  label = "Square Feet required",min = min(completedData$SQUARE.FEET),max = max(completedData$SQUARE.FEET),
+                 value = min(completedData$SQUARE.FEET) )
+               ,
+                sliderInput(inputId = "lot_size",
+                  label = " Select lot_size",min = min(completedData$LOT.SIZE),max = max(completedData$LOT.SIZE),
+                 value = min(completedData$LOT.SIZE) ),
+                sliderInput(inputId = "year_built",
+                  label = " Select Year_built",min = min(completedData$YEAR.BUILT),max = max(completedData$YEAR.BUILT),
+                 value = min(completedData$YEAR.BUILT)) 
+                
+                ),
+ mainPanel(
+ plotOutput(outputId = "boxplot")
+ )
+))
+,
+# Tab 4
+tabPanel("Spatial Distribution of Properties",
+h1("Spatial Distribution of Houses"),
+h4("Hover on the circles to view details"),
+sidebarLayout(
+
+    # Sidebar panel for Inputs ----
+    sidebarPanel(
+                checkboxGroupInput(inputId = "Ptype",
+                  label = "Property_Type",choices = (c("Single Family Residential" , "Townhouse")), selected = "Single Family Residential" )),
+ mainPanel(
+ leafletOutput("mymap", width = "100%", height = 500
+ )
+))) )
+)
+         
+## Server Function
+server <- function(input, output, session){
+  # Tab 1
+  output$hist <- renderPlot({
+ hist(completedData$PRICE[completedData$ZIP.OR.POSTAL.CODE == input$zip], main = " Histogram of prices in a zipcode" , xlab = "PRICE") })
+# Tab 2
+ output$summary <- renderDataTable({pivoted_median})
+ # Tab 3
+ output$boxplot <- renderPlot({
+  filtered_data = filter(completedData , BEDS >= input$BEDS &
+                           BATHS >= input$BATHS &
+                           SQUARE.FEET >= input$sq  & LOT.SIZE >= input$lot_size & YEAR.BUILT >= input$year_built)
+ boxplot(filtered_data$PRICE, data = filtered_data, ylab = "PRICE", main = "Boxplot distribution of Price per combination") })
+ # Tab 4
+ output$mymap <- renderLeaflet({
+   houses_p_type = filter(completedData, PROPERTY.TYPE == input$Ptype)
+    leaflet(houses_p_type) %>% addTiles %>% setView(lng = -96.79, lat = 32.7767, zoom = 10) %>%
+     addCircleMarkers(lng = houses_p_type$LONGITUDE , lat = houses_p_type$LATITUDE, radius = 2,
+                     label = lapply(houses_p_type$label, HTML))
+  })
+ 
+ 
+ 
+ 
+ 
+ 
+}
+  
+shinyApp(ui = ui, server = server)
+          
+
+```
+
+
+
+
