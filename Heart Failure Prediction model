@@ -1,0 +1,348 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import pandas as pd
+import numpy as np
+import os
+from sklearn.preprocessing import LabelEncoder
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+
+
+
+heart = pd.read_csv("heart_2020_cleaned.csv")
+
+
+
+
+
+heart.head(10)
+
+
+# # Profiling Data 
+
+from pandas_profiling import ProfileReport
+
+pip install pandas_profiling
+
+rawProfile = ProfileReport(heart, title = "Raw Data Profile", explorative = True)
+
+
+
+
+
+rawProfile
+
+
+rawProfile.to_file("rawProfle.html")
+
+
+
+
+
+# Converting Age variable from categorical value to a continous value
+
+encode_AgeCategory = {'55-59':57, '80 or older':80, '65-69':67,
+                      '75-79':77,'40-44':42,'70-74':72,'60-64':62,
+                      '50-54':52,'45-49':47,'18-24':21,'35-39':37,
+                      '30-34':32,'25-29':27}
+heart['AgeCategory'] = heart['AgeCategory'].apply(lambda x: encode_AgeCategory[x])
+
+
+
+
+heart.shape
+
+
+
+
+# Import label encoder
+from sklearn import preprocessing
+ 
+# label_encoder object knows how to understand word labels.
+label_encoder = preprocessing.LabelEncoder()
+ 
+# Encode labels in column 'species'.
+heart['HeartDisease']= label_encoder.fit_transform(heart['HeartDisease'])
+heart['Smoking']= label_encoder.fit_transform(heart['Smoking'])
+heart['AlcoholDrinking']= label_encoder.fit_transform(heart['AlcoholDrinking'])
+heart['Stroke']= label_encoder.fit_transform(heart['Stroke'])
+heart['DiffWalking']= label_encoder.fit_transform(heart['DiffWalking'])
+heart['Sex']= label_encoder.fit_transform(heart['Sex'])
+heart['AgeCategory']= label_encoder.fit_transform(heart['AgeCategory'])
+heart['Race']= label_encoder.fit_transform(heart['Race'])
+heart['Diabetic']= label_encoder.fit_transform(heart['Diabetic'])
+heart['PhysicalActivity']= label_encoder.fit_transform(heart['PhysicalActivity'])
+heart['GenHealth']= label_encoder.fit_transform(heart['GenHealth'])
+heart['Asthma']= label_encoder.fit_transform(heart['Asthma'])
+heart['KidneyDisease']= label_encoder.fit_transform(heart['KidneyDisease'])
+heart['SkinCancer']= label_encoder.fit_transform(heart['SkinCancer'])
+
+
+
+
+
+X, y = heart.loc[:, heart.columns != 'HeartDisease'], heart['HeartDisease']
+
+
+
+
+
+pip install imblearn
+
+
+
+
+
+pip install xgboost
+
+
+
+
+
+import imblearn
+
+
+
+
+
+from imblearn.under_sampling import NeighbourhoodCleaningRule 
+ncr = NeighbourhoodCleaningRule(n_neighbors=20, threshold_cleaning=0.5)
+
+
+X_ncr, y_ncr =ncr.fit_resample(X,y)
+
+
+
+
+
+sampledProfile = ProfileReport(X_ncr, title = "Sampled Data Profile", explorative = True)
+
+
+
+
+
+sampledProfile
+
+
+
+from sklearn.model_selection import train_test_split
+X_train, X_test,y_train,y_test = train_test_split(X_ncr,y_ncr,test_size=0.40,random_state=42)
+
+
+
+# Feature Scaling
+
+from sklearn.preprocessing import StandardScaler
+sc = StandardScaler()
+X_train = sc.fit_transform(X_train)
+X_test = sc.transform(X_test)
+
+
+
+# XGBoost Classifier with Bagging and Boosting
+
+import xgboost as xgb
+from sklearn.ensemble import BaggingClassifier
+from sklearn.metrics import accuracy_score
+
+
+# Init classifier
+xgb_cl = xgb.XGBClassifier()
+
+# The baggging ensemble classifier is initialized with:
+
+bagging = BaggingClassifier(base_estimator=xgb_cl, n_estimators=5, max_samples=50, bootstrap=True)
+
+# Training
+bagging.fit(X_train, y_train)
+
+# Evaluating
+print(f"Train score: {bagging.score(X_train, y_train)}")
+print(f"Test score: {bagging.score(X_test, y_test)}")
+
+# Fit
+xgb_cl.fit(X_train, y_train)
+
+
+# Predict
+preds = xgb_cl.predict(X_test)
+
+# Score
+accuracy_score(y_test, preds)
+
+
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn import metrics #Import scikit-learn metrics module for accuracy calculation
+
+
+# The base learner will be a decision tree with depth = 2
+xgb_cl = xgb.XGBClassifier()
+
+adaboost = AdaBoostClassifier(base_estimator=xgb_cl, n_estimators=5, learning_rate=0.1, random_state=23)
+
+# Train!
+adaboost.fit(X_train, y_train)
+
+# Evaluation
+print(f"Train score: {adaboost.score(X_train, y_train)}")
+print(f"Test score: {adaboost.score(X_test, y_test)}")
+
+# Fit
+xgb_cl.fit(X_train, y_train)
+
+# Predict
+preds = xgb_cl.predict(X_test)
+print("Accuracy:",metrics.accuracy_score(y_test, preds))
+
+
+
+# Decision Tree Classifier with Bagging and Boosting
+
+from sklearn.tree import DecisionTreeClassifier 
+# Import Decision Tree Classifier
+from sklearn.ensemble import BaggingClassifier
+#Import scikit-learn metrics module for accuracy calculation
+from sklearn import metrics 
+
+
+tree = DecisionTreeClassifier(max_depth=3, random_state=23)
+
+# The baggging ensemble classifier is initialized with:
+
+bagging = BaggingClassifier(base_estimator=tree, n_estimators=5, max_samples=50, bootstrap=True)
+
+# Training
+bagging.fit(X_train, y_train)
+
+# Evaluating
+print(f"Train score: {bagging.score(X_train, y_train)}")
+print(f"Test score: {bagging.score(X_test, y_test)}")
+
+
+# Train Decision Tree Classifer
+tree = tree.fit(X_train,y_train)
+
+#Predict the response for test dataset
+y_pred = tree.predict(X_test)
+
+print("Accuracy:",metrics.accuracy_score(y_test, y_pred))
+
+
+from sklearn.ensemble import AdaBoostClassifier
+
+# The base learner will be a decision tree with depth = 2
+tree = DecisionTreeClassifier(max_depth=2, random_state=23)
+
+
+adaboost = AdaBoostClassifier(base_estimator=tree, n_estimators=5, learning_rate=0.1, random_state=23)
+
+# Train!
+adaboost.fit(X_train, y_train)
+
+# Evaluation
+print(f"Train score: {adaboost.score(X_train, y_train)}")
+print(f"Test score: {adaboost.score(X_test, y_test)}")
+
+# Train Decision Tree Classifer
+tree = tree.fit(X_train,y_train)
+
+#Predict the response for test dataset
+y_pred = tree.predict(X_test)
+
+print("Accuracy:",metrics.accuracy_score(y_test, y_pred))
+
+
+
+#Import Gaussian Naive Bayes model
+
+from sklearn.naive_bayes import GaussianNB
+
+#Create a Gaussian Classifier
+gnb = GaussianNB()
+
+#Train the model using the training sets
+gnb.fit(X_train, y_train)
+
+#Predict the response for test dataset
+y_pred = gnb.predict(X_test)
+print("Accuracy:",metrics.accuracy_score(y_test, y_pred))
+
+
+
+# Logistic Regression
+
+from sklearn.linear_model import LogisticRegression
+classifier = LogisticRegression(random_state = 0)
+classifier.fit(X_train, y_train)
+y_pred = classifier.predict(X_test)
+print ("Accuracy : ", accuracy_score(y_test, y_pred))
+
+
+# K Nearest Classifiers
+
+from sklearn.neighbors import KNeighborsClassifier
+ 
+knn = KNeighborsClassifier(n_neighbors=8)
+knn.fit(X_train, y_train)
+y_pred = knn.predict(X_test)
+print(accuracy_score(y_test, y_pred))
+
+
+
+# KNN with gridserach
+
+from sklearn.model_selection import GridSearchCV
+from sklearn.neighbors import KNeighborsClassifier
+
+# define function
+
+knn = KNeighborsClassifier()
+
+
+# define a list of parameters
+param_knn = {'n_neighbors': range(3, 26, 2)}  # exactly the same as the input variable name. 
+
+#apply grid search
+
+grid_knn = GridSearchCV( knn , param_knn, cv = 5)
+
+grid_knn.fit(X_train, y_train)
+
+# the best hyperparameter chosen:
+print(grid_knn.best_params_)
+
+# When k=25 (best case), the validation score of through CV is:
+print(grid_knn.best_score_)
+
+
+grid_knn.score(X_test, y_test)
+
+
+# Linear SVC with GridSearchCV
+
+from sklearn.model_selection import GridSearchCV
+from sklearn.svm import LinearSVC
+
+# Define Function
+linear_svc = LinearSVC(random_state = 22) # must specify random state here
+
+# Define a list of hyperparameters
+params_svc = {'C': [0.001, 0.01, 0.1, 1, 10, 100, 100000]   }
+
+grid_lr_svc = GridSearchCV(linear_svc,  params_svc, n_jobs = 2 )
+
+grid_lr_svc.fit(X_train, y_train)
+
+
+grid_lr_svc.score(X_test, y_test)
+
+
+grid_lr_svc.best_params_
+
+
+
+
+
